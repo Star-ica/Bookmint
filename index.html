@@ -1,0 +1,123 @@
+<!DOCTYPE html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>BookMint — Decentralized Bookstore</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/ethers/6.13.2/ethers.umd.min.js"></script>
+<style>
+:root{--bg:#faf6ef;--card:#fff;--ink:#2a2118;--mut:#7a6c5d;--acc:#8c3b2a;--line:#e6dccb;--text-mut:var(--mut);--primary:var(--acc)}
+@media(prefers-color-scheme:dark){:root{--bg:#1a1511;--card:#251e18;--ink:#f1e8da;--mut:#a89883;--acc:#d98a6b;--line:#3a3027}}
+*{box-sizing:border-box}body{margin:0;min-height:100vh;display:flex;flex-direction:column;background:var(--bg);color:var(--ink);font:16px/1.55 Georgia,serif}
+nav{display:flex;flex-wrap:wrap;gap:6px 18px;align-items:center;padding:14px 5vw;border-bottom:1px solid var(--line);position:sticky;top:0;background:var(--bg);z-index:5}
+nav b{font-size:1.4rem;color:var(--acc);margin-right:auto}nav a{color:var(--ink);text-decoration:none;font:14px system-ui}nav a:hover{color:var(--acc)}
+main{flex:1;width:100%;max-width:1100px;margin:0 auto;padding:28px 5vw}h1,h2{font-weight:600}
+button,.btn{background:var(--acc);color:#fff;border:0;padding:9px 16px;border-radius:6px;font:14px system-ui;cursor:pointer}button.alt{background:none;color:var(--acc);border:1px solid var(--acc)}
+input,select,textarea{width:100%;padding:9px;margin:4px 0 12px;border:1px solid var(--line);border-radius:6px;background:var(--card);color:var(--ink);font:14px system-ui}
+.grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(170px,1fr));gap:22px}
+.book{cursor:pointer}.cover{aspect-ratio:2/3;border-radius:4px 10px 10px 4px;display:flex;align-items:flex-end;padding:12px;color:#fff;font-weight:700;box-shadow:0 6px 16px #0003;background-size:cover;background-position:center}
+.card{background:var(--card);border:1px solid var(--line);border-radius:10px;padding:18px;margin-bottom:16px}
+.row{display:flex;gap:10px;flex-wrap:wrap}.row>*{flex:1;min-width:140px}.mut{color:var(--mut);font:13px system-ui}.tag{background:var(--line);padding:2px 9px;border-radius:99px;font:12px system-ui}
+.split{display:grid;grid-template-columns:240px 1fr;gap:28px}@media(max-width:700px){.split{grid-template-columns:1fr}}
+#msg{position:fixed;bottom:16px;right:16px;background:var(--ink);color:var(--bg);padding:10px 16px;border-radius:8px;display:none;font:14px system-ui;max-width:80vw}
+.warn{border-left:4px solid var(--acc);padding:8px 14px;background:var(--card);font:13px system-ui}
+footer{width:100%;max-width:1100px;margin:40px auto 0;padding:24px 5vw;border-top:1px solid var(--line);font:14px system-ui}</style></head><body>
+<nav><b>📖 BookMint</b><a href="#/market">Market</a><a href="#/library">Library</a><a href="#/studio">Studio</a><a href="#/dashboard">Dashboard</a><a href="#/admin">Admin</a><button id="cx" class="alt">Connect wallet</button></nav>
+<main id="app"></main><div id="msg"></div>
+<footer>
+ <div style="display: flex; gap: 2rem;">
+      <a href="https://botchain.ai" target="_blank" rel="noopener"
+         style="color: var(--text-mut); text-decoration: none; transition: color 0.2s;"
+         onmouseover="this.style.color='var(--primary)'"
+         onmouseout="this.style.color='var(--text-mut)'">
+        BOTChain Network ↗
+      </a>
+      <a href="https://scan.botchain.ai" target="_blank" rel="noopener"
+         style="color: var(--text-mut); text-decoration: none; transition: color 0.2s;"
+         onmouseover="this.style.color='var(--primary)'"
+         onmouseout="this.style.color='var(--text-mut)'">
+        BOTChain Explorer ↗
+      </a>
+    </div>
+</footer>
+
+<script>
+// ===== CONFIG: fill after deployment =====
+const CFG={BOOKMINT:"0xYourBookMintAddress",BOT:"0xYourBOTToken",USDT:"0xYourUSDTToken",DECIMALS:18};
+const ABI=[
+"function authors(address) view returns(string name,string bio,string avatarRef,bool exists)",
+"function authorList(uint256) view returns(address)","function authorCount() view returns(uint256)",
+"function bookCount() view returns(uint256)",
+"function getBook(uint256) view returns(tuple(address author,string title,string description,string category,string language,string coverRef,string contentRef,address royaltyTo,uint16 royaltyBps,bool published,bool paused,bool allowRepurchase,uint32 sales,uint64 createdAt))",
+"function price(uint256,address) view returns(uint256)","function hasAccess(uint256,address) view returns(bool)",
+"function libraryOf(address) view returns(uint256[])","function balances(address,address) view returns(uint256)","function earned(address,address) view returns(uint256)",
+"function reportCount(uint256) view returns(uint32)","function feeBps() view returns(uint16)","function admin() view returns(address)","function platformPaused() view returns(bool)",
+"function setProfile(string,string,string)",
+"function registerBook(string,string,string,string,string,string,uint256,uint256,address,uint16,bool) returns(uint256)",
+"function updateBook(uint256,string,string,string,string,string,string)","function setPrices(uint256,uint256,uint256)","function setPublished(uint256,bool)",
+"function purchase(uint256,address)","function withdraw(address)","function report(uint256,string)",
+"function moderate(uint256,bool)","function setFeeBps(uint16)","function setRules(uint16,uint256)","function setPlatformPaused(bool)",
+"event Purchased(uint256 indexed id,address indexed buyer,address indexed token,uint256 amount,uint256 fee)"];
+const ERC=["function approve(address,uint256) returns(bool)","function allowance(address,address) view returns(uint256)"];
+let provider,signer,me,bm,bmR;const $=s=>document.querySelector(s),app=$("#app");
+const esc=s=>String(s??"").replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
+const fmt=v=>ethers.formatUnits(v,CFG.DECIMALS),parse=v=>ethers.parseUnits(String(v||"0"),CFG.DECIMALS);
+const short=a=>a.slice(0,6)+"…"+a.slice(-4);
+function toast(t){const m=$("#msg");m.textContent=t;m.style.display="block";setTimeout(()=>m.style.display="none",4500)}
+async function connect(){if(!window.ethereum)return toast("Install a wallet like MetaMask");
+ provider=new ethers.BrowserProvider(window.ethereum);signer=await provider.getSigner();me=await signer.getAddress();
+ bm=new ethers.Contract(CFG.BOOKMINT,ABI,signer);bmR=bm;$("#cx").textContent=short(me);route()}
+async function tx(p,ok){try{const t=await p;toast("Pending…");await t.wait();toast(ok||"Confirmed");route()}catch(e){toast(e.reason||e.shortMessage||e.message)}}
+function ro(){if(!bmR){const p=window.ethereum?new ethers.BrowserProvider(window.ethereum):null;if(p)bmR=new ethers.Contract(CFG.BOOKMINT,ABI,p)}return bmR}
+const hue=s=>[...String(s)].reduce((a,c)=>a+c.charCodeAt(0),0)%360;
+function cover(b){const bg=b.coverRef&&/^https?:|^data:image/.test(b.coverRef)?`url('${esc(b.coverRef)}')`:`linear-gradient(145deg,hsl(${hue(b.title)} 45% 35%),hsl(${(hue(b.title)+50)%360} 50% 22%))`;
+ return `<div class="cover" style="background-image:${bg}">${b.coverRef&&/^https?:|^data:image/.test(b.coverRef)?"":esc(b.title)}</div>`}
+async function allBooks(){const c=ro();if(!c)return[];const n=Number(await c.bookCount()),o=[];for(let i=0;i<n;i++){const b=await c.getBook(i);o.push({id:i,...b.toObject?b.toObject():b})}return o}
+const tokName=a=>a.toLowerCase()===CFG.BOT.toLowerCase()?"BOT":"USDT";
+const cardBook=b=>`<div class="book" onclick="location.hash='#/book/${b.id}'">${cover(b)}<div><b>${esc(b.title)}</b></div><div class="mut">${esc(b.category)} · ${esc(b.language)}</div></div>`;
+const P={
+async "/"(){app.innerHTML=`<h1 style="font-size:2.6rem">Publish and own books, <i>onchain.</i></h1><p class="mut" style="font-size:1.1rem;max-width:600px">Authors list books and keep ${"97.5%"} of sales (fee is admin-configurable). Readers buy access with BOT or USDT and prove ownership from their wallet.</p><p><a class="btn" href="#/market">Browse books</a> <a class="btn" style="background:none;color:var(--acc);border:1px solid var(--acc)" href="#/studio">Start publishing</a></p><div class="warn"><b>Storage limitation:</b> ebook files and covers are not stored onchain. BookMint records metadata, a content reference you supply, prices, and ownership. No DRM is claimed — a buyer who downloads a file can copy it.</div>`},
+async "/market"(){app.innerHTML=`<h1>Marketplace</h1><div class="row"><input id="q" placeholder="Search title, author, description"><select id="cat"><option value="">All categories</option></select><select id="lang"><option value="">All languages</option></select></div><div id="g" class="grid"></div>`;
+ const bs=(await allBooks()).filter(b=>b.published&&!b.paused);const u=k=>[...new Set(bs.map(b=>b[k]))];
+ u("category").forEach(c=>$("#cat").insertAdjacentHTML("beforeend",`<option>${esc(c)}</option>`));u("language").forEach(c=>$("#lang").insertAdjacentHTML("beforeend",`<option>${esc(c)}</option>`));
+ const draw=()=>{const q=$("#q").value.toLowerCase();$("#g").innerHTML=bs.filter(b=>(!$("#cat").value||b.category==$("#cat").value)&&(!$("#lang").value||b.language==$("#lang").value)&&(b.title+b.description).toLowerCase().includes(q)).map(cardBook).join("")||"<p class=mut>No books found.</p>"};
+ ["q","cat","lang"].forEach(i=>$("#"+i).oninput=draw);draw()},
+async "/book"(id){const c=ro(),b=await c.getBook(id),a=await c.authors(b.author),pb=await c.price(id,CFG.BOT),pu=await c.price(id,CFG.USDT);
+ const own=me&&await c.hasAccess(id,me);
+ app.innerHTML=`<div class="split"><div>${cover({...b,title:b.title})}</div><div><h1>${esc(b.title)}</h1><p>by <a href="#/author/${b.author}">${esc(a.name||short(b.author))}</a> <span class="tag">${esc(b.category)}</span> <span class="tag">${esc(b.language)}</span></p><p>${esc(b.description)}</p>
+ <div class="card"><b>Purchase access</b><p class="mut">${b.sales} sold · Royalty split: ${Number(b.royaltyBps)/100}% to co-beneficiary · ${b.allowRepurchase?"Multiple purchases allowed":"One purchase per wallet"}</p>
+ ${own?`<p>✅ You own this book. Content reference: <code>${esc(b.contentRef)}</code></p>`:`<div class="row">${pb>0n?`<button onclick="buy(${id},'${CFG.BOT}',${pb})">Buy · ${fmt(pb)} BOT</button>`:""}${pu>0n?`<button onclick="buy(${id},'${CFG.USDT}',${pu})">Buy · ${fmt(pu)} USDT</button>`:""}</div>`}
+ <p class="mut">Ownership is verified by <code>hasAccess(${id}, wallet)</code> on contract ${short(CFG.BOOKMINT)}.</p></div>
+ <button class="alt" onclick="rep(${id})">Report listing</button></div></div>`},
+async "/author"(addr){const c=ro(),a=await c.authors(addr),bs=(await allBooks()).filter(b=>b.author.toLowerCase()==addr.toLowerCase()&&b.published&&!b.paused);
+ app.innerHTML=`<h1>${esc(a.name||short(addr))}</h1><p class="mut">${addr}</p><p>${esc(a.bio)}</p><h2>Books</h2><div class="grid">${bs.map(cardBook).join("")||"<p class=mut>None published.</p>"}</div>`},
+async "/library"(){if(!me)return app.innerHTML="<p>Connect your wallet to see your library.</p>";const c=ro(),ids=await c.libraryOf(me),bs=await Promise.all(ids.map(async i=>({id:Number(i),...(await c.getBook(i)).toObject()})));
+ const ev=await c.queryFilter(c.filters.Purchased(null,me));
+ app.innerHTML=`<h1>My library</h1><div class="grid">${bs.map(cardBook).join("")||"<p class=mut>No purchases yet.</p>"}</div><h2>Transaction history</h2>${ev.map(e=>`<div class="card">Book #${e.args[0]} · ${fmt(e.args[3])} ${tokName(e.args[2])} · <span class="mut">${short(e.transactionHash)}</span></div>`).join("")||"<p class=mut>No transactions.</p>"}`},
+async "/studio"(){if(!me)return app.innerHTML="<p>Connect your wallet first.</p>";const c=ro(),a=await c.authors(me);
+ app.innerHTML=`<h1>Publishing studio</h1><div class="card"><h2>Author profile</h2><input id="an" placeholder="Name" value="${esc(a.name)}"><textarea id="ab" placeholder="Bio">${esc(a.bio)}</textarea><input id="aa" placeholder="Avatar URL (optional)" value="${esc(a.avatarRef)}"><button onclick="prof()">${a.exists?"Update":"Create"} profile</button></div>
+ <div class="card"><h2>Register book</h2><input id="t" placeholder="Title"><textarea id="d" placeholder="Description"></textarea><div class="row"><input id="c" placeholder="Category"><input id="l" placeholder="Language"></div>
+ <input id="cr" placeholder="Cover image URL (external reference)"><input id="ct" placeholder="Content reference (external URL; publicly visible onchain)">
+ <div class="row"><input id="pb" placeholder="Price in BOT (0 = not accepted)"><input id="pu" placeholder="Price in USDT (0 = not accepted)"></div>
+ <div class="row"><input id="rt" placeholder="Royalty recipient (optional)"><input id="rb" placeholder="Royalty % of net (0-50)"></div>
+ <label><input type="checkbox" id="rp" style="width:auto"> Allow repeat purchases by same wallet</label><p class="mut">Content references are external and not guaranteed to persist; the file itself is not stored onchain.</p><button onclick="reg()">Register book</button></div>
+ <h2>My listings</h2><div id="mine"></div>`;
+ const mine=(await allBooks()).filter(b=>b.author.toLowerCase()==me.toLowerCase());
+ $("#mine").innerHTML=mine.map(b=>`<div class="card"><b>${esc(b.title)}</b> <span class="tag">${b.paused?"paused by admin":b.published?"published":"draft"}</span> <button class="alt" onclick="pub(${b.id},${!b.published})">${b.published?"Unpublish":"Publish"}</button> <button class="alt" onclick="edit(${b.id})">Edit prices</button></div>`).join("")||"<p class=mut>No books yet.</p>"},
+async "/dashboard"(){if(!me)return app.innerHTML="<p>Connect your wallet first.</p>";const c=ro(),bs=(await allBooks()).filter(b=>b.author.toLowerCase()==me.toLowerCase());
+ const row=async t=>[await c.balances(me,t),await c.earned(me,t)];const[b1,b2]=[await row(CFG.BOT),await row(CFG.USDT)];
+ app.innerHTML=`<h1>Author dashboard</h1><div class="row"><div class="card"><b>BOT</b><br>Withdrawable: ${fmt(b1[0])}<br>Lifetime: ${fmt(b1[1])}<br><button onclick="wd('${CFG.BOT}')">Withdraw</button></div><div class="card"><b>USDT</b><br>Withdrawable: ${fmt(b2[0])}<br>Lifetime: ${fmt(b2[1])}<br><button onclick="wd('${CFG.USDT}')">Withdraw</button></div></div><h2>Sales</h2>${bs.map(b=>`<div class="card">${esc(b.title)} — ${b.sales} purchases</div>`).join("")||"<p class=mut>No books.</p>"}`},
+async "/admin"(){const c=ro(),ad=await c.admin();if(!me||me.toLowerCase()!=ad.toLowerCase())return app.innerHTML="<p>Admin wallet required.</p>";
+ const bs=await allBooks(),rc=await Promise.all(bs.map(b=>c.reportCount(b.id)));
+ app.innerHTML=`<h1>Admin</h1><div class="card"><p>Fee: ${Number(await c.feeBps())/100}% (max 10%)</p><input id="f" placeholder="New fee in bps (e.g. 250)"><button onclick="tx(bm.setFeeBps(f.value),'Fee updated')">Set fee</button></div>
+ <div class="card"><b>Publishing rules</b><div class="row"><input id="mr" placeholder="Max royalty bps"><input id="mp" placeholder="Max price (token units, 18 dec)"></div><button onclick="tx(bm.setRules(mr.value,parse(mp.value)),'Rules set')">Save rules</button> <button class="alt" onclick="tx(bm.setPlatformPaused(${!await c.platformPaused()}))">Toggle platform pause (${await c.platformPaused()?"paused":"live"})</button></div>
+ <h2>Listings</h2>${bs.map((b,i)=>`<div class="card">#${b.id} ${esc(b.title)} · reports: ${rc[i]} <button class="alt" onclick="tx(bm.moderate(${b.id},${!b.paused}))">${b.paused?"Unpause":"Pause"}</button></div>`).join("")}`}};
+async function route(){const h=location.hash.slice(1)||"/",[,r,arg]=h.split("/"),k="/"+(r||"");const f=P[k];app.innerHTML="<p class=mut>Loading…</p>";
+ try{if(!window.ethereum||CFG.BOOKMINT.includes("Your"))throw Error("Set CFG addresses in index.html and use a wallet browser.");await f(arg)}catch(e){app.innerHTML=`<div class="warn">${esc(e.shortMessage||e.message)}</div>`;if(k=="/")P["/"]()}}
+async function buy(id,tok,amt){try{const t=new ethers.Contract(tok,ERC,signer);if((await t.allowance(me,CFG.BOOKMINT))<amt){toast("Approve spending…");await(await t.approve(CFG.BOOKMINT,amt)).wait()}await tx(bm.purchase(id,tok),"Purchased!")}catch(e){toast(e.reason||e.shortMessage||e.message)}}
+const need=()=>{if(!bm){toast("Connect wallet");throw 0}};
+const V=i=>document.getElementById(i).value;
+function prof(){tx(bm.setProfile(V("an"),V("ab"),V("aa")),"Profile saved")}
+function reg(){tx(bm.registerBook(V("t"),V("d"),V("c"),V("l"),V("cr"),V("ct"),parse(V("pb")),parse(V("pu")),V("rt")||ethers.ZeroAddress,Math.round(Number(V("rb")||0)*100),$("#rp").checked),"Registered (draft). Publish it below.")}
+function pub(i,on){tx(bm.setPublished(i,on))}
+function edit(i){const b=prompt("New BOT price (0 disables)"),u=prompt("New USDT price (0 disables)");if(b!=null&&u!=null)tx(bm.setPrices(i,parse(b),parse(u)),"Prices updated")}
+function wd(t){tx(bm.withdraw(t),"Withdrawn")}
+function rep(i){const r=prompt("Reason for report?");if(r)tx(bm.report(i,r),"Reported")}
+$("#cx").onclick=connect;addEventListener("hashchange",route);route();
+</script></body></html>
